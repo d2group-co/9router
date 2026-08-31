@@ -8,8 +8,28 @@ import { getSettings } from "@/lib/localDb";
 
 const DEFAULT_PASSWORD = "123456";
 
+function deriveVercelJwtSecret(initialPassword) {
+  return crypto
+    .createHash("sha256")
+    .update(`9router-dashboard-session:${initialPassword}`)
+    .digest("hex");
+}
+
 function loadJwtSecret() {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+
+  // Vercel's /tmp filesystem is ephemeral and can differ between function
+  // instances. A randomly generated jwt-secret stored there causes a session
+  // issued by one instance to fail verification on another, producing a
+  // /login <-> /dashboard redirect loop. Prefer an explicit JWT_SECRET, but
+  // derive a stable secret from INITIAL_PASSWORD as a safe migration fallback.
+  if (process.env.VERCEL === "1" && process.env.INITIAL_PASSWORD) {
+    console.warn(
+      "[auth] JWT_SECRET is not set on Vercel; deriving a stable session secret from INITIAL_PASSWORD. Set JWT_SECRET for production."
+    );
+    return deriveVercelJwtSecret(process.env.INITIAL_PASSWORD);
+  }
+
   const file = path.join(DATA_DIR, "jwt-secret");
   try {
     return fs.readFileSync(file, "utf8").trim();
