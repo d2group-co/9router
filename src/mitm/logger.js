@@ -12,7 +12,20 @@ const log = (msg) => console.log(`[${time()}] [MITM] ${msg}`);
 const err = (msg) => console.error(`[${time()}] ❌ [MITM] ${msg}`);
 
 const DUMP_DIR = path.join(DATA_DIR, "logs", "mitm");
-if (!fs.existsSync(DUMP_DIR)) fs.mkdirSync(DUMP_DIR, { recursive: true });
+
+// Do not touch the filesystem at module import time. Provider/dashboard routes
+// import MITM helpers even when MITM is never started, and import-time mkdirs
+// can crash serverless rendering. Create the temporary dump directory only
+// when an operation actually needs it.
+function ensureDumpDir() {
+  try {
+    fs.mkdirSync(DUMP_DIR, { recursive: true });
+    return true;
+  } catch (e) {
+    console.warn(`[MITM] Unable to create dump directory '${DUMP_DIR}': ${e?.message || e}`);
+    return false;
+  }
+}
 
 // Clear all files inside DUMP_DIR (called on MITM server start to avoid unbounded growth)
 function clearDumpDir() {
@@ -50,6 +63,7 @@ function decodeBody(buf, encoding) {
 // Save raw request: method + url + headers + body
 function dumpRequest(req, bodyBuffer, tag = "raw") {
   if (isBlacklisted(req.url)) return null;
+  if (!ensureDumpDir()) return null;
   try {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
     const slug = slugify((req.headers.host || "") + req.url);
@@ -84,6 +98,7 @@ function createResponseDumper(req, tag = "raw") {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     },
     end: () => {
+      if (!ensureDumpDir()) return;
       try {
         const raw = Buffer.concat(chunks);
         const enc = headers["content-encoding"] || headers["Content-Encoding"];
