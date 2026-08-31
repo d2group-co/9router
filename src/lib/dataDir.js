@@ -5,6 +5,13 @@ import os from "os";
 const APP_NAME = "9router";
 
 function defaultDir() {
+  // Vercel Functions expose a read-only deployment filesystem. The only writable
+  // location is the runtime temp directory. Keep the existing desktop/server
+  // behaviour everywhere else.
+  if (process.env.VERCEL === "1") {
+    return path.join(os.tmpdir(), `.${APP_NAME}`);
+  }
+
   if (process.platform === "win32") {
     return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), APP_NAME);
   }
@@ -26,9 +33,10 @@ export function getDataDir() {
     fs.mkdirSync(configured, { recursive: true });
     return configured;
   } catch (e) {
-    if (e?.code === "EACCES" || e?.code === "EPERM") {
-      console.warn(`[DATA_DIR] '${configured}' not writable → fallback ~/.${APP_NAME}`);
-      return defaultDir();
+    if (e?.code === "EACCES" || e?.code === "EPERM" || e?.code === "ENOENT") {
+      const fallback = defaultDir();
+      console.warn(`[DATA_DIR] '${configured}' not writable → fallback ${fallback}`);
+      return fallback;
     }
     throw e;
   }
