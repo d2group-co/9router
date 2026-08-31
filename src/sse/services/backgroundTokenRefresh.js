@@ -23,6 +23,9 @@ function isTruthyEnv(value) {
 
 function isNonServerRuntime() {
   if (typeof window !== "undefined") return true;
+  // Vercel Functions are request-scoped/stateless compute. A process interval
+  // cannot be relied on as a scheduler even when Fluid Compute keeps instances warm.
+  if (process.env.VERCEL === "1") return true;
   const phase = process.env.NEXT_PHASE || "";
   if (
     phase === "phase-production-build" ||
@@ -31,7 +34,6 @@ function isNonServerRuntime() {
   ) {
     return true;
   }
-  // Next.js build / static generation markers
   if (process.env.NEXT_RUNTIME === "edge") return true;
   return false;
 }
@@ -72,7 +74,6 @@ export function selectConnectionsNeedingRefresh(connections, nowMs = Date.now())
 }
 
 async function loadActiveConnections() {
-  // Dynamic import avoids circular load with db / app graph at module eval time.
   const { getProviderConnections } = await import("../../lib/db/repos/connectionsRepo.js");
   return getProviderConnections({ isActive: true });
 }
@@ -164,7 +165,6 @@ export function startBackgroundTokenRefresh({ intervalMs } = {}) {
     });
   };
 
-  // First pass soon after boot so idle connections don't wait a full interval.
   initialTimeoutHandle = setTimeout(safeTick, INITIAL_DELAY_MS);
   if (initialTimeoutHandle.unref) initialTimeoutHandle.unref();
 
